@@ -1,0 +1,209 @@
+local M = {}
+
+-- Define the content for the GUI script
+local GUI_SCRIPT_CONTENT = [[
+function init(self)
+    msg.post(".", "acquire_input_focus")
+end
+
+function final(self)
+    msg.post(".", "release_input_focus")
+end
+
+function update(self, dt)
+end
+
+function on_message(self, message_id, message, sender)
+end
+
+function on_input(self, action_id, action)
+end
+
+function on_reload(self)
+end
+]]
+
+-- Helper functions to handle string manipulation
+local function path_segments(path)
+    return string.match(path, "(.-)([^\\/]-%.?([^%.\\/]*))$")
+end
+
+local function ends_with(str, ending)
+    return ending == "" or str:sub(-#ending) == ending
+end
+
+local function file_exists(name)
+    local f = io.open(name, "r")
+    if f ~= nil then
+        io.close(f)
+        return true
+    else
+        return false
+    end
+end
+
+-- Create GUI and GUI script files
+local function create_gui_and_script_files(gui_path, gui_script_path)
+    -- Create the GUI component file
+    if not file_exists("." .. gui_path) then
+        local gui_content = [[
+        script: "]] .. gui_script_path .. [["
+        fonts {
+            name: "default"
+            font: "/builtins/fonts/default.font"
+        }
+        material: "/builtins/materials/gui.material"
+        adjust_reference: ADJUST_REFERENCE_PARENT
+        ]]
+        local gui_file = io.open("." .. gui_path, "w")
+        gui_file:write(gui_content)
+        gui_file:close()
+    end
+
+    -- Create the GUI script file
+    if not file_exists("." .. gui_script_path) then
+        local gui_script_file = io.open("." .. gui_script_path, "w")
+        gui_script_file:write(GUI_SCRIPT_CONTENT)
+        gui_script_file:close()
+    end
+end
+
+-- Function to insert a game object with the created GUI component into the collection
+local function insert_game_object_in_collection(collection_path, gui_path, go_name)
+    -- Read the current collection file
+    local collection_file = io.open("." .. collection_path, "r")
+    if not collection_file then
+        print("Failed to open collection file: " .. collection_path)
+        return
+    end
+
+    local collection_text = collection_file:read("*a")
+    collection_file:close()
+
+    -- Add a new game object with the GUI component
+    local new_game_object = [[
+    embedded_instances {
+        id: "]] .. go_name .. [["
+        data: "components {\n"
+        "  id: \"gui\"\n"
+        "  component: \"]] .. gui_path .. [[\"\n"
+        "  position {\n"
+        "    x: 0.0\n"
+        "    y: 0.0\n"
+        "    z: 0.0\n"
+        "  }\n"
+        "  rotation {\n"
+        "    x: 0.0\n"
+        "    y: 0.0\n"
+        "    z: 0.0\n"
+        "    w: 1.0\n"
+        "  }\n"
+        "  scale {\n"
+        "    x: 1.0\n"
+        "    y: 1.0\n"
+        "    z: 1.0\n"
+        "  }\n"
+        "}\n"
+    }
+    ]]
+    -- Append the new game object to the collection
+    collection_text = collection_text .. new_game_object
+
+    -- Write the updated collection back to the file
+    local updated_collection_file = io.open("." .. collection_path, "w")
+    updated_collection_file:write(collection_text)
+    updated_collection_file:close()
+
+    print("Game object with GUI added to collection.")
+end
+
+-- UI dialog component to get the name of the new GUI
+local dialog = editor.ui.component(function(props)
+    local name, set_name = editor.ui.use_state("")
+
+    return editor.ui.dialog({
+        title = props.title or "Enter GUI Name",
+        content = editor.ui.vertical({
+            padding = editor.ui.PADDING.LARGE,
+            children = {
+                editor.ui.string_field({
+                    value = name,
+                    on_value_changed = set_name,
+                    label = "GUI Name"
+                })
+            }
+        }),
+        buttons = {
+            editor.ui.dialog_button({
+                text = "Cancel",
+                cancel = true
+            }),
+            editor.ui.dialog_button({
+                text = "Create",
+                enabled = name ~= "",
+                default = true,
+                result = name
+            }),
+        }
+    })
+end)
+
+-- Handler function to show the dialog and create the GUI files
+local function handle_create_gui_with_script(collection_path)
+    -- Show the UI dialog to get the name of the GUI
+    local gui_name = editor.ui.show_dialog(dialog({ title = "New GUI Name" }))
+
+    if gui_name then
+        -- Extract the base directory of the collection
+        local base_path, _ = path_segments(collection_path)
+
+        -- Generate new GUI and GUI script paths
+        local gui_path = base_path .. gui_name .. ".gui"
+        local gui_script_path = base_path .. gui_name .. ".gui_script"
+
+        -- Create the GUI and GUI script files
+        create_gui_and_script_files(gui_path, gui_script_path)
+
+        -- Insert a new game object in the collection with the GUI component
+        insert_game_object_in_collection(collection_path, gui_path, gui_name)
+    else
+        print("GUI creation canceled.")
+    end
+end
+
+-- Command to create GUI with script and insert it into the collection
+function M.get_commands()
+    return {
+        {
+            label = "Add GUI to collection",
+            locations = {"Outline"},
+            query = {
+                selection = {type = "resource", cardinality = "one"}
+            },
+            active = function(opts)
+                -- Only active if a .collection file is selected
+                local path = editor.get(opts.selection, "path")
+                return ends_with(path, ".collection")
+            end,
+            run = function(opts)
+                -- Ensure the selection exists
+                if not opts.selection then
+                    print("No valid selection found.")
+                    return
+                end
+
+                -- Get the path of the collection
+                local collection_path = editor.get(opts.selection, "path")
+                if not collection_path then
+                    print("Failed to retrieve collection path.")
+                    return
+                end
+
+                -- Handle the GUI creation and insertion into the collection
+                handle_create_gui_with_script(collection_path)
+            end
+        }
+    }
+end
+
+return M

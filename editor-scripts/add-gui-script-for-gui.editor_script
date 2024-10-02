@@ -1,0 +1,97 @@
+local M = {}
+
+-- Define the content for the GUI script
+local GUI_SCRIPT_CONTENT = [[
+function init(self)
+    msg.post(".", "acquire_input_focus")
+end
+
+function final(self)
+    msg.post(".", "release_input_focus")
+end
+
+function update(self, dt)
+end
+
+function on_message(self, message_id, message, sender)
+end
+
+function on_input(self, action_id, action)
+end
+
+function on_reload(self)
+end
+]]
+
+local function create_gui_script(gui_path)
+    -- Extract the base directory and the name of the .gui file
+    local base_dir, gui_name = gui_path:match("(.-)([^\\/]+)%.gui$")
+    local gui_script_path = base_dir .. gui_name .. ".gui_script"
+
+    -- Write the content to the .gui_script file
+    local file = io.open("." .. gui_script_path, "w")
+    if not file then
+        print("Error: Unable to create GUI script file at: " .. gui_script_path)
+        return
+    end
+    file:write(GUI_SCRIPT_CONTENT)
+    file:close()
+
+    print("GUI script created at: " .. gui_script_path)
+
+    -- Attach the GUI script to the selected GUI component
+    local gui_file = io.open("." .. gui_path, "rb")
+    if not gui_file then return end
+    local gui_text = gui_file:read("*a")
+    gui_file:close()
+
+    -- Replace or add the script reference in the .gui file
+    if gui_text:match('script: ".*"') then
+        -- Replace existing script line
+        gui_text = gui_text:gsub('script: ".*"', 'script: "' .. gui_script_path .. '"')
+    else
+        -- Add script property if it doesn't exist
+        gui_text = gui_text .. '\nscript: "' .. gui_script_path .. '"\n'
+    end
+
+    gui_file = io.open("." .. gui_path, "w")
+    gui_file:write(gui_text)
+    gui_file:close()
+
+    print("Attached GUI script to: " .. gui_path)
+end
+
+local function create_gui_script_for_selected_gui(selection)
+    -- Get the path of the selected .gui file
+    local gui_path = editor.get(selection, "path")
+
+    -- Ensure the path is valid
+    if not gui_path or not gui_path:match("%.gui$") then
+        print("Error: Invalid GUI file selected.")
+        return
+    end
+
+    -- Create the GUI script and attach it
+    create_gui_script(gui_path)
+end
+
+function M.get_commands()
+    return {
+        {
+            label = "Add GUI Script",
+            locations = { "Assets" },
+            query = {
+                selection = { type = "resource", cardinality = "one" }
+            },
+            active = function(opts)
+                local path = editor.get(opts.selection, "path")
+                return path:match("%.gui$")
+            end,
+            run = function(opts)
+                create_gui_script_for_selected_gui(opts.selection)
+            end
+        }
+    }
+end
+
+return M

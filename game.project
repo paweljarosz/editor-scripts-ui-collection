@@ -1,0 +1,21 @@
+[bootstrap]
+main_collection = /main/main.collectionc
+
+[script]
+shared_state = 1
+
+[display]
+width = 960
+height = 640
+
+[android]
+input_method = HiddenInputField
+
+[project]
+title = editor-scripts-ui-collection
+publisher = Paweł Jarosz
+developer = Paweł Jarosz
+
+[library]
+include_dirs = editor-scripts
+
