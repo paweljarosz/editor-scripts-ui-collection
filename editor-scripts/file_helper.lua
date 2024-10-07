@@ -32,7 +32,6 @@ function M.exists(path)
 	end
 
 	if success and output_attrs then
-		print("Exists?", output_attrs.exists)
 		return output_attrs.exists
 	else
 		print("Failed to retrieve attributes for path:", path)
@@ -86,11 +85,14 @@ function M.create_directory_2(path)
 	end
 end
 
-
-
 -- Escape double quotes in paths
-function M.escape(s)
-	return s:gsub('"', '""')
+function M.escape(input_path)
+	return input_path:gsub('"', '""')
+end
+
+-- Escape leading slash in paths
+function M.escape_leading_slash(input_path)
+	return ( (input_path:sub(1, 1) == "/") and input_path:sub(2) or input_path )
 end
 
 -- Creates a VBscript file in given directory with given command content
@@ -120,6 +122,44 @@ function M.remove(path)
 		print("Error removing file/directory:", path, "Error:", error)
 		return false
 	end
+end
+
+function M.remove_directory_recursive(path)
+	if not M.exists(path) then
+		return true
+	end
+
+	local success, files = pcall(editor.list_files, path)
+	if not success then
+		print("Error listing files in directory:", path)
+		return false
+	end
+
+	for _, file in ipairs(files) do
+		local file_path = path .. "/" .. file
+		local attr = editor.resource_attributes(file_path)
+
+		if attr.type == "directory" then
+			if not M.remove_directory_recursive(file_path) then
+				return false
+			end
+		else
+			local remove_success = pcall(editor.delete_resource, file_path)
+			if not remove_success then
+				print("Error removing file:", file_path)
+				return false
+			end
+		end
+	end
+
+	-- Remove empty catalog
+	local remove_dir_success = pcall(editor.delete_resource, path)
+	if not remove_dir_success then
+		print("Error removing directory:", path)
+		return false
+	end
+
+	return true
 end
 
 return M

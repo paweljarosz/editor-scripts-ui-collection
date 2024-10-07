@@ -7,7 +7,7 @@ function M.show_dialog_single_button(title_text, button_text, callback)
 		title = title_text,
 		buttons = {
 			editor.ui.dialog_button({
-				text = button_text,
+				text = button_text or "OK",
 				default = true,
 				result = true
 			})
@@ -29,11 +29,13 @@ function M.show_dialog_single_text_and_button(title_text, content_text, button_t
 		content = editor.ui.vertical({
 			padding = editor.ui.PADDING.LARGE,
 			children = {
-				editor.ui.text_box({
+				editor.ui.paragraph({
 					text = content_text,
 					read_only = true,
+					alignment = editor.ui.TEXT_ALIGNMENT.LEFT,
 					width = 600,
 					height = 300,
+					word_wrap = true,
 				}),
 			},
 		}),
@@ -46,8 +48,8 @@ function M.show_dialog_single_text_and_button(title_text, content_text, button_t
 		}
 	})
 
-	-- Show popup
-	editor.ui.show_dialog(dialog)
+	-- Show popup and return user input
+	return editor.ui.show_dialog(dialog)
 end
 
 -- Creates a window popup with just a title, a text in content and a single button to exit.
@@ -69,8 +71,8 @@ function M.show_error(error_text)
 		}
 	})
 
-	-- Show popup
-	editor.ui.show_dialog(dialog)
+	-- Show popup and return user input
+	return editor.ui.show_dialog(dialog)
 end
 
 -- Creates a window popup with just a title and a single button to exit.

@@ -41,17 +41,49 @@ function M.create_vbscript_command_ffplay(sound_path)
 	]], escape(FFPLAY_PATH), escape(sound_path))
 end
 
+function M.is_ffplay_running()
+	local platform = editor.platform
+	if platform == "x86_64-win32" then
+		-- Windows
+		local success, output = pcall(function()
+			return editor.execute('tasklist', '/FI', 'IMAGENAME eq ffplay.exe', '/NH', {
+				out = "capture",
+				err = "stdout",
+				reload_resources = false,
+			})
+		end)
+		return success and output and output:find("ffplay.exe") ~= nil
+	else
+		-- Linux (MacOS?)
+		local success, output = pcall(function()
+			return editor.execute('pgrep', 'ffplay', {
+				out = "capture",
+				err = "stdout",
+				reload_resources = false,
+			})
+		end)
+		return success and output and output ~= ""
+	end
+end
+
 -- Execute command to kill FFplay process
 function M.execute_kill_ffplay()
-	local success, result = pcall(function()
+	if not M.is_ffplay_running() then
+		print("FFplay is not running, no need to kill it.")
+		return true
+	end
+
+	local result = pcall(function()
 		editor.execute('taskkill', '/F', '/IM', 'ffplay.exe')
 	end)
 
-	if not success then
-		local error_message = result and result.err or "Unknown error occurred while killing ffplay."
-		error("Failed to kill ffplay: " .. tostring(error_message))
-		return nil, "Failed to kill ffplay: " .. tostring(error_message)
+	if not result then
+		local error_message = "Unknown error occurred while killing ffplay."
+		error("Failed to kill ffplay: " .. error_message)
+		return false, error_message
 	end
+
+	return true
 end
 
 -- Function to get the duration of the audio file using ffprobe
@@ -168,5 +200,54 @@ function M.is_process_running(process_name)
 	end
 end
 
+-- Function to convert audio using FFmpeg
+function M.convert_audio(input_path, output_path, output_format)
+	--input_path = input_path:sub(2)  -- Remove leading slash
+	--output_path = output_path:gsub("^/", "")
+	input_path = "./" .. input_path  -- Ensure it's treated as a relative path
+
+	-- Define FFmpeg parameters for different formats and execute command
+	local success, result = pcall(function()
+		if output_format == "ogg" then
+			-- OGG format conversion with Defold-compatible parameters
+			return editor.execute(
+				FFMPEG_PATH,
+				"-y",
+				"-loglevel", "error",
+				"-i", input_path,
+				"-ar", "44100",  -- Set sample rate to 44100 Hz
+				"-ac", "2",      -- Set number of audio channels to 2
+				"-b:a", "192k",  -- Set audio bitrate
+				output_path,
+				{
+					reload_resources = true,
+					out = "capture",
+					err = "stdout"
+				}
+			)
+		elseif output_format == "wav" then
+			-- WAV format conversion with Defold-compatible parameters
+			return editor.execute(
+			FFMPEG_PATH,
+				"-y",
+				"-loglevel", "error",
+				"-i", input_path,
+				"-ar", "44100",  -- Set sample rate to 44100 Hz
+				"-ac", "2",      -- Set number of audio channels to 2
+				output_path,
+				{
+					reload_resources = true,
+					out = "capture",
+					err = "stdout"
+				}
+			)
+		else
+			-- Unsupported format
+			return false, "Unsupported output format: " .. output_format
+		end
+	end)
+
+	return success, result or "FFmpeg execution failed."
+end
 
 return M

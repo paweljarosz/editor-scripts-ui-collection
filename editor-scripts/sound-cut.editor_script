@@ -291,7 +291,7 @@ function M.get_commands()
             label = "Cut Subtrack",
             locations = { "Assets" },
             query = { selection = { type = "resource", cardinality = "one" } },
-            active = function() return false end,--active_function,
+            active = active_function,
             run = run_cut_editor_function,
         }
     }
