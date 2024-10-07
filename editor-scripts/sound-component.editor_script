@@ -1,0 +1,263 @@
+local M = {}
+
+-- Helper function to check if a file is a .wav or .ogg file
+local function is_audio_file(path)
+    return path:match("%.wav$") or path:match("%.ogg$")
+end
+
+-- Helper function to get the file name without extension
+local function get_file_name_without_extension(path)
+    return path:match("([^/\\]+)%.%w+$")
+end
+
+-- Helper function to get the directory of a file path
+local function get_directory(path)
+    return path:match("(.*/)")
+end
+
+-- Function to create the .sound file with the specified properties
+local function create_sound_file(sound_file_path, properties)
+    -- Construct the .sound file content
+    local content = string.format([[
+    sound: "%s"
+    looping: %d
+    group: "%s"
+    gain: %f
+    pan: %f
+    speed: %f
+    loopcount: %d
+    ]], properties.sound, properties.looping and 1 or 0, properties.group, properties.gain, properties.pan, properties.speed, properties.loopcount)
+
+    -- Determine the .sound file path
+    local directory = get_directory(sound_file_path)
+    local sound_file_name = properties.name .. ".sound"
+    local sound_file_full_path = "." .. directory .. sound_file_name
+
+    -- Write the .sound file
+    local file, err = io.open(sound_file_full_path, "w")
+    if not file then
+        error("Failed to create sound file: " .. tostring(err))
+    end
+    file:write(content)
+    file:close()
+end
+
+-- Define the UI dialog component
+local sound_dialog = editor.ui.component(function(props)
+    -- Initialize state variables
+    local name, set_name = editor.ui.use_state(props.default_name or "")
+    local looping, set_looping = editor.ui.use_state(props.default_looping or false)
+    local loopcount, set_loopcount = editor.ui.use_state(props.default_loopcount or 0)
+    local group, set_group = editor.ui.use_state(props.default_group or "master")
+    local gain, set_gain = editor.ui.use_state(props.default_gain or 1.0)
+    local pan, set_pan = editor.ui.use_state(props.default_pan or 0.0)
+    local speed, set_speed = editor.ui.use_state(props.default_speed or 1.0)
+
+    -- Validate input values
+    local gain_issue = nil
+    if gain < 0.0 or gain > 1.0 then
+        gain_issue = { severity = editor.ui.ISSUE_SEVERITY.ERROR, message = "Gain must be between 0.0 and 1.0" }
+    end
+
+    local pan_issue = nil
+    if pan < -1.0 or pan > 1.0 then
+        pan_issue = { severity = editor.ui.ISSUE_SEVERITY.ERROR, message = "Pan must be between -1.0 and 1.0" }
+    end
+
+    local speed_issue = nil
+    if speed <= 0.0 then
+        speed_issue = { severity = editor.ui.ISSUE_SEVERITY.ERROR, message = "Speed must be greater than 0.0" }
+    end
+
+    -- Determine if the "Create" button should be enabled
+    local can_create = name ~= "" and not gain_issue and not pan_issue and not speed_issue
+
+    return editor.ui.dialog({
+        title = "Create Sound Component",
+        content = editor.ui.grid({
+            columns = {{}, {grow = true}},
+            padding = editor.ui.PADDING.LARGE,
+            spacing = editor.ui.SPACING.MEDIUM,
+            children = {
+                -- Name field
+                {
+                    editor.ui.label({
+                        text = "Sound Name",
+                        alignment = editor.ui.ALIGNMENT.RIGHT,
+                    }),
+                    editor.ui.string_field({
+                        value = name,
+                        on_value_changed = set_name,
+                    }),
+                },
+                -- Looping checkbox
+                {
+                    editor.ui.label({
+                        text = "Looping",
+                        alignment = editor.ui.ALIGNMENT.RIGHT,
+                    }),
+                    editor.ui.check_box({
+                        value = looping,
+                        on_value_changed = set_looping,
+                    }),
+                },
+                -- Loopcount field
+                {
+                    editor.ui.label({
+                        text = "Loop Count",
+                        alignment = editor.ui.ALIGNMENT.RIGHT,
+                    }),
+                    editor.ui.integer_field({
+                        value = loopcount,
+                        on_value_changed = set_loopcount,
+                    }),
+                },
+                -- Group field
+                {
+                    editor.ui.label({
+                        text = "Group",
+                        alignment = editor.ui.ALIGNMENT.RIGHT,
+                    }),
+                    editor.ui.string_field({
+                        value = group,
+                        on_value_changed = set_group,
+                    }),
+                },
+                -- Gain field
+                {
+                    editor.ui.label({
+                        text = "Gain (0.0 - 1.0)",
+                        alignment = editor.ui.ALIGNMENT.RIGHT,
+                    }),
+                    editor.ui.number_field({
+                        value = gain,
+                        on_value_changed = set_gain,
+                        issue = gain_issue,
+                    }),
+                },
+                -- Pan field
+                {
+                    editor.ui.label({
+                        text = "Pan (-1.0 - 1.0)",
+                        alignment = editor.ui.ALIGNMENT.RIGHT,
+                    }),
+                    editor.ui.number_field({
+                        value = pan,
+                        on_value_changed = set_pan,
+                        issue = pan_issue,
+                    }),
+                },
+                -- Speed field
+                {
+                    editor.ui.label({
+                        text = "Speed (> 0.0)",
+                        alignment = editor.ui.ALIGNMENT.RIGHT,
+                    }),
+                    editor.ui.number_field({
+                        value = speed,
+                        on_value_changed = set_speed,
+                        issue = speed_issue,
+                    }),
+                },
+            }
+        }),
+        buttons = {
+            editor.ui.dialog_button({
+                text = "Cancel",
+                cancel = true,
+            }),
+            editor.ui.dialog_button({
+                text = "Create",
+                default = true,
+                enabled = can_create,
+                result = {
+                    name = name,
+                    looping = looping,
+                    loopcount = loopcount,
+                    group = group,
+                    gain = gain,
+                    pan = pan,
+                    speed = speed,
+                },
+            }),
+        }
+    })
+end)
+
+function M.get_commands()
+    return {
+        {
+            label = "Create Sound Component",
+            locations = { "Assets" },
+            query = { selection = { type = "resource", cardinality = "one" } },
+            active = function(opts)
+                local path = editor.get(opts.selection, "path")
+                return is_audio_file(path)
+            end,
+            run = function(opts)
+                local path = editor.get(opts.selection, "path")
+                local file_name_without_ext = get_file_name_without_extension(path)
+
+                -- Show the dialog
+                local result = editor.ui.show_dialog(sound_dialog({
+                    default_name = file_name_without_ext,
+                }))
+
+                if result then
+                    -- Set the properties
+                    local properties = result
+                    properties.sound = path  -- Resource path to the sound file
+
+                    -- Create the .sound file
+                    local ok, err = pcall(function()
+                        create_sound_file(path, properties)
+                    end)
+                    if not ok then
+                        editor.ui.show_dialog(editor.ui.dialog({
+                            title = "Error",
+                            content = editor.ui.label({
+                                text = "Failed to create sound component:\n" .. tostring(err),
+                                alignment = editor.ui.TEXT_ALIGNMENT.LEFT,
+                            }),
+                            buttons = {
+                                editor.ui.dialog_button({
+                                    text = "OK",
+                                    default = true,
+                                }),
+                            }
+                        }))
+                    else
+                        editor.ui.show_dialog(editor.ui.dialog({
+                            title = "Success",
+                            content = editor.ui.scroll({
+                                content = editor.ui.vertical({
+                                    padding = editor.ui.PADDING.LARGE,
+                                    children = {
+                                        editor.ui.paragraph({
+                                            text = "Sound component created successfully.",
+                                            alignment = editor.ui.TEXT_ALIGNMENT.LEFT,
+                                            word_wrap = true
+                                        })
+                                    }
+                                })
+                            }),
+                            buttons = {
+                                editor.ui.dialog_button({
+                                    text = "OK",
+                                    default = true
+                                })
+                            }
+                        }))
+
+                        -- Optionally, save any unsaved changes
+                        editor.save()
+                    end
+                else
+                    -- User cancelled the dialog
+                end
+            end
+        }
+    }
+end
+
+return M

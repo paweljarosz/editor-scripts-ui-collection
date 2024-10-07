@@ -1,0 +1,300 @@
+local ffmpeg_helper = require "editor-scripts.ffmpeg_helper"
+local file_helper = require "editor-scripts.file_helper"
+local ui_helper = require "editor-scripts.ui_helper"
+
+local M = {}
+
+local active_function = function(opts)
+    -- Only active if the selected resource is a supported sound file
+    local sound_path = editor.get(opts.selection, "path")
+    return file_helper.is_sound_file(sound_path)
+end
+
+-- Define the main UI dialog (Cut Editor)
+local cut_subtrack_editor = editor.ui.component(function(props)
+    -- Initialize state variables
+    local start_time, set_start_time = editor.ui.use_state(0)
+    local end_time, set_end_time = editor.ui.use_state(props.duration or 0)
+    local name, set_name = editor.ui.use_state(props.default_name or "")
+    local is_prehearing, set_is_prehearing = editor.ui.use_state(false)
+
+    -- Paths without leading slashes for consistency
+    local prehear_filepath = "editor-scripts/tmp_cut/prehear.wav"
+    local vbs_script_path = "editor-scripts/tmp_cut/play_sound.vbs"
+    local temp_prehear_directory = "/editor-scripts/tmp_cut"
+    local duration = props.duration or 0
+
+    -- Validate input values
+    local issues = {}
+    if start_time < 0 or start_time >= duration then
+        issues.start_time = {
+            severity = editor.ui.ISSUE_SEVERITY.ERROR,
+            message = string.format("Start time must be between 0 and %.2f seconds", duration)
+        }
+    end
+
+    if end_time <= start_time or end_time > duration then
+        issues.end_time = {
+            severity = editor.ui.ISSUE_SEVERITY.ERROR,
+            message = string.format("End time must be between start time and %.2f seconds", duration)
+        }
+    end
+
+    local can_extract = not issues.start_time and not issues.end_time and name ~= ""
+
+    -- Function to clean up temporary prehearing files and directories
+    local function cleanup_prehearing_resources()
+        if file_helper.file_exists(prehear_filepath) then
+            local removed = file_helper.remove("./"..prehear_filepath)
+            if not removed then
+                print("Failed to remove prehear file:", prehear_filepath)
+            end
+        end
+
+        if file_helper.file_exists(vbs_script_path) then
+            local removed = file_helper.remove(vbs_script_path)
+            if not removed then
+                print("Failed to remove VBScript file:", vbs_script_path)
+            end
+        end
+
+        local remo_dir = temp_prehear_directory:gsub('/', '')
+        local removed = file_helper.remove("."..temp_prehear_directory)
+        if not removed then
+            print("Failed to remove temp directory:", "."..temp_prehear_directory)
+        else
+            print("Temporary directory removed:", "."..temp_prehear_directory)
+        end
+    end
+
+    -- Function to stop prehearing and clean up resources
+    local function stop_prehearing()
+        if ffmpeg_helper.is_process_running("ffplay.exe") then
+            local stop_success, stop_error = pcall(ffmpeg_helper.execute_kill_ffplay)
+            if not stop_success then
+                print("Warning: " .. tostring(stop_error))
+            else
+                print("ffplay process stopped successfully.")
+            end
+        else
+            print("ffplay is not running; no need to kill the process.")
+        end
+
+        cleanup_prehearing_resources()
+        set_is_prehearing(false)
+    end
+
+    -- Function to handle prehearing
+    local function handle_prehear()
+        if is_prehearing then
+            print("Attempting to stop prehearing...")
+            stop_prehearing()
+            return
+        end
+
+        print("Starting prehearing...")
+        file_helper.create_directory(temp_prehear_directory)
+
+        -- Extract the subtrack to the temporary file
+        local success, error_message = ffmpeg_helper.extract_subtrack(props.sound_path, prehear_filepath, start_time, end_time)
+        if not success then
+            ui_helper.show_error("Failed to extract subtrack for prehearing:\n" .. error_message)
+            cleanup_prehearing_resources()
+            return
+        end
+
+        -- Create VBScript content and run it
+        local vbscript_command_run_ffplay = ffmpeg_helper.create_vbscript_command_ffplay(prehear_filepath)
+        vbs_script_path = file_helper.create_vbscript(vbscript_command_run_ffplay, temp_prehear_directory)
+
+        local play_success, result = pcall(function()
+            return editor.execute('wscript.exe', vbs_script_path)
+        end)
+
+        set_is_prehearing(play_success)
+
+        if not play_success then
+            local error_text = "Failed to execute VBScript:\n" .. tostring(result)
+            ui_helper.show_error(error_text)
+            cleanup_prehearing_resources()
+        else
+            print("Playing sound: " .. prehear_filepath)
+            local title_text = "Playing Sound: " .. prehear_filepath
+            local button_text = "Stop"
+            ui_helper.show_dialog_single_button(title_text, button_text, function()
+                stop_prehearing()
+                print("Stopped prehearing after dialog close.")
+            end)
+        end
+    end
+    
+    
+
+    return editor.ui.dialog({
+        title = "Extract Subtrack",
+        content = editor.ui.grid({
+            columns = {{}, {grow = true}},
+            padding = editor.ui.PADDING.LARGE,
+            spacing = editor.ui.SPACING.MEDIUM,
+            children = {
+                -- Track Name Display
+                {
+                    editor.ui.label({
+                        text = "Source Track Name:",
+                        alignment = editor.ui.ALIGNMENT.LEFT,
+                    }),
+                    editor.ui.label({
+                        text = props.track_name,
+                        alignment = editor.ui.ALIGNMENT.LEFT,
+                    }),
+                },
+                -- Track Duration Display
+                {
+                    editor.ui.label({
+                        text = "Source Track Duration: ",
+                        alignment = editor.ui.ALIGNMENT.LEFT,
+                    }),
+                    editor.ui.label({
+                        text = string.format("%.2f s", duration),
+                        alignment = editor.ui.ALIGNMENT.LEFT,
+                    }),
+                },
+                -- Separator
+                {
+                    editor.ui.separator({ grow = true, column_span = 2 }),
+                },
+                -- Subtrack Name
+                {
+                    editor.ui.label({
+                        text = "Subtrack Name:",
+                        alignment = editor.ui.ALIGNMENT.LEFT,
+                    }),
+                    editor.ui.string_field({
+                        value = name,
+                        on_value_changed = set_name,
+                    }),
+                },
+                -- Start Time
+                {
+                    editor.ui.label({
+                        text = "Start Time (s):",
+                        alignment = editor.ui.ALIGNMENT.LEFT,
+                    }),
+                    editor.ui.number_field({
+                        value = start_time,
+                        on_value_changed = set_start_time,
+                        issue = issues.start_time,
+                    }),
+                },
+                -- End Time
+                {
+                    editor.ui.label({
+                        text = "End Time (s):",
+                        alignment = editor.ui.ALIGNMENT.LEFT,
+                    }),
+                    editor.ui.number_field({
+                        value = end_time,
+                        on_value_changed = set_end_time,
+                        issue = issues.end_time,
+                    }),
+                },
+                -- Prehear Button
+                {
+                    editor.ui.label({ text = "" }), -- Empty label for alignment
+                    editor.ui.button({
+                        text = is_prehearing and "Stop Subtrack" or "Play Subtrack", -- Change button text based on state
+                        enabled = can_extract,
+                        on_pressed = handle_prehear,
+                    }),
+                },
+            }
+        }),
+        buttons = {
+            editor.ui.dialog_button({
+                text = "Cancel",
+                cancel = true,
+            }),
+            editor.ui.dialog_button({
+                text = "Extract",
+                default = true,
+                enabled = can_extract,
+                result = {
+                    name = name,
+                    start_time = start_time,
+                    end_time = end_time,
+                },
+            }),
+        }
+    })
+end)
+
+local run_cut_editor_function = function(opts)
+    local sound_path = editor.get(opts.selection, "path")
+    local sound_filename = file_helper.get_file_name_without_extension(sound_path)
+    local sound_extension = file_helper.get_file_extension(sound_path)
+    local sound_directory = file_helper.get_directory(sound_path)
+
+    -- Get audio duration
+    local duration, err = ffmpeg_helper.get_audio_duration(sound_path)
+    if not duration then
+        ui_helper.show_error("Failed to get audio duration: " .. err)
+        return
+    end
+
+    -- Show the main dialog - Cut Editor
+    local user_parameters = editor.ui.show_dialog(cut_subtrack_editor({
+        track_name = sound_filename,
+        track_extension = sound_extension,
+        duration = duration,
+        default_name = sound_filename .. "_subtrack",
+        sound_path = sound_path, -- Pass the sound_path to the editor component
+    }))
+
+    -- Cut and save subtrack with given user parameters
+    if user_parameters then
+        local subtrack_name = user_parameters.name
+        local start_time = user_parameters.start_time
+        local end_time = user_parameters.end_time
+
+        -- Determine the output file path
+        local output_resource_path = sound_directory .. subtrack_name .. "." .. sound_extension
+        local output_path = output_resource_path:sub(2)  -- Remove the leading dot
+
+        -- Ask if user accepts overwriting if file already exists
+        if file_helper.exists(output_path) then
+            local title_text = "File already exists. Overwrite?"
+            local confirm_button_text = "Overwrite"
+            local is_overwrite_accepted = ui_helper.show_dialog_with_confirm_and_cancel(title_text, confirm_button_text)
+            if not is_overwrite_accepted then
+                print("Subtrack extraction canceled by user.")
+                return
+            end
+        end
+
+        -- Extract the subtrack
+        local success, error_message = ffmpeg_helper.extract_subtrack(sound_path, output_path, start_time, end_time)
+        if success then
+            local title_text = "Subtrack extracted successfully to: " .. output_path
+            local button_text = "OK"
+            ui_helper.show_dialog_single_button(title_text, button_text)
+        else
+            ui_helper.show_error("Failed to extract subtrack:" .. error_message)
+        end
+    else
+        print("Subtrack extraction canceled by user.")
+    end
+end
+
+function M.get_commands()
+    return {
+        {
+            label = "Cut Subtrack",
+            locations = { "Assets" },
+            query = { selection = { type = "resource", cardinality = "one" } },
+            active = function() return false end,--active_function,
+            run = run_cut_editor_function,
+        }
+    }
+end
+
+return M

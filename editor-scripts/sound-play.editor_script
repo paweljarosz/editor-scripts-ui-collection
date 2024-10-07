@@ -1,0 +1,80 @@
+local ffmpeg_helper = require "editor-scripts.ffmpeg_helper"
+local file_helper = require "editor-scripts.file_helper"
+local ui_helper = require "editor-scripts.ui_helper"
+
+local M = {}
+
+local active_function = function(opts)
+    -- Only active if the selected resource is a supported sound file
+    local sound_path = editor.get(opts.selection, "path")
+    return file_helper.is_sound_file(sound_path)
+end
+
+--[[local run_in_terminal_function = function(opts)
+    local sound_path = editor.get(opts.selection, "path")
+    local window_title = 'Defold_FFPLAY_' .. tostring(os.time())
+
+    -- Start playing sound in terminal
+    ffmpeg_helper.execute_play_sound_in_window(sound_path, window_title)
+
+    -- While sound is playing - show popup
+    local title_text = "Playing Sound: "..sound_path
+    local button_text = "Stop"
+    ui_helper.show_dialog_single_button(title_text, button_text)
+
+    -- When dialog is closed, continue and kill ffplay process:
+    ffmpeg_helper.execute_kill_ffplay()
+end]]
+
+local run_in_background_function = function(opts)
+    local sound_path = "." .. editor.get(opts.selection, "path")
+    local temp_directory = "/editor-scripts/tmp_play"
+    file_helper.create_directory(temp_directory)
+
+    -- Create VBScript content and put it in script in temporary dir to start ffplay hidden in background
+    local vbscript_command_run_ffplay = ffmpeg_helper.create_vbscript_command_ffplay(sound_path)
+    local vbs_script_path = file_helper.create_vbscript(vbscript_command_run_ffplay, temp_directory)
+
+    -- Run the VBScript to start ffplay hidden in background
+    local success, result = pcall(function()
+        return editor.execute('wscript.exe', vbs_script_path)
+    end)
+
+    if not success then
+        local error_text = "Failed to execute VBScript:\n" .. tostring(result)
+        ui_helper.show_error(error_text)
+    else
+        -- While sound is playing - show popup
+        local title_text = "Playing Sound: "..sound_path
+        local button_text = "Stop"
+        ui_helper.show_dialog_single_button(title_text, button_text)
+
+        -- When dialog is closed, continue and kill ffplay process.
+        ffmpeg_helper.execute_kill_ffplay()
+    end
+
+    -- Delete the temporary VBScript file and directory
+    file_helper.remove(vbs_script_path)
+    file_helper.remove("."..temp_directory)
+end
+
+function M.get_commands()
+    return {
+        --[[{    -- Safe version that plays explicitly in Terminal Window
+            label = "Play in Terminal",
+            locations = { "Assets" },
+            query = { selection = { type = "resource", cardinality = "one" } },
+            active = active_function,
+            run = run_in_terminal_function
+        },]]
+        {
+            label = "Play",
+            locations = { "Assets" },
+            query = { selection = { type = "resource", cardinality = "one" } },
+            active = function() return false end,--active_function,
+            run = run_in_background_function
+        }
+    }
+end
+
+return M

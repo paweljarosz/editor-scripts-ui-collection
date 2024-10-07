@@ -1,0 +1,145 @@
+local ffmpeg_helper = require "editor-scripts.ffmpeg_helper"
+local file_helper = require "editor-scripts.file_helper"
+local ui_helper = require "editor-scripts.ui_helper"
+
+local M = {}
+
+-- Function to convert audio to Defold-compatible formats using FFmpeg
+local function convert_audio(input_path, output_format)
+    input_path = file_helper.escape_leading_slash(input_path)
+
+    -- Define the output file path by replacing the extension
+    local output_path = input_path:gsub("%.%w+$", "." .. output_format)
+
+    -- Execute the FFmpeg command using helper
+    return ffmpeg_helper.convert_audio(input_path, output_path, output_format)
+end
+
+
+-- Active function for 'Convert Sound' command
+local active_function = function(opts)
+    for _, id in ipairs(opts.selection) do
+        local path = editor.get(id, "path")
+        if not file_helper.is_sound_file(path) then
+            return false
+        end
+    end
+    return true
+end
+
+-- Reactive component for format selection dialog
+local function converter_popup(selected_format)
+    return editor.ui.dialog({
+        title = "Select Output Format",
+        content = editor.ui.vertical({
+            padding = editor.ui.PADDING.LARGE,
+            spacing = editor.ui.SPACING.MEDIUM,
+            children = {
+                editor.ui.label({
+                    text = "Choose the output format:",
+                    alignment = editor.ui.ALIGNMENT.LEFT
+                }),
+                editor.ui.select_box({
+                    value = selected_format.value,
+                    on_value_changed = function(new_value)
+                        selected_format.value = new_value
+                    end,
+                    options = {"ogg", "wav"},
+                    to_string = function(item) return item:upper() end,
+                    alignment = editor.ui.ALIGNMENT.LEFT
+                })
+            }
+        }),
+        buttons = {
+            editor.ui.dialog_button({
+                text = "Cancel",
+                cancel = true
+            }),
+            editor.ui.dialog_button({
+                text = "Convert",
+                enabled = selected_format.value ~= "",
+                default = true,
+                result = selected_format.value
+            }),
+        }
+    })
+end
+
+-- Run function for 'Convert Sound' command
+local run_convert_function = function(opts)
+    local selected_format = { value = "ogg" }
+
+    -- Show format selection dialog
+    local output_format = editor.ui.show_dialog(converter_popup(selected_format))
+
+    -- Check if the user canceled the dialog
+    if not output_format then
+        return
+    end
+
+    local files_converted = {}
+    local files_skipped = {}
+    local error_messages = {}
+
+    for _, id in ipairs(opts.selection) do
+        -- Get the selected file path
+        local resource_path = editor.get(id, "path")
+        local input_path = file_helper.escape_leading_slash(resource_path) -- Remove leading "/"
+
+        -- Get the file extension
+        local ext = file_helper.get_file_extension(input_path)
+        if not ext then
+            table.insert(error_messages, resource_path .. ": Could not determine file extension")
+        else
+            ext = ext:lower():sub(2) -- Remove dot and make lowercase
+
+            if ext == output_format then
+                -- File is already in desired format; skip conversion
+                table.insert(files_skipped, resource_path)
+            else
+                -- Call the conversion function
+                local success, error_message = convert_audio(input_path, output_format)
+
+                if success then
+                    table.insert(files_converted, resource_path)
+                else
+                    table.insert(error_messages, resource_path .. ": " .. error_message)
+                end
+            end
+        end
+    end
+
+    -- Provide feedback to the user
+    local message_parts = {}
+
+    if #files_converted > 0 then
+        table.insert(message_parts, string.format("Converted files to %s format: %s", output_format:upper(), table.concat(files_converted, "\n")))
+    end
+
+    if #files_skipped > 0 then
+        table.insert(message_parts, "Skipped files already in desired format: " .. table.concat(files_skipped, "\n"))
+    end
+
+    if #error_messages > 0 then
+        table.insert(message_parts, "Errors occurred during conversion: " .. table.concat(error_messages, "\n"))
+    end
+
+    local message = table.concat(message_parts, " | ")
+    ui_helper.show_dialog_single_button(message or "")
+end
+
+function M.get_commands()
+    return {
+        {
+            label = "Convert",
+            locations = { "Assets" },
+            query = {
+                selection = { type = "resource", cardinality = "many" }
+            },
+            active = active_function,
+            run = run_convert_function
+        }
+    }
+end
+
+return M

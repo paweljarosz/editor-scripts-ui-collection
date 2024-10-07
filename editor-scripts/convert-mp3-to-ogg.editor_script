@@ -1,0 +1,115 @@
+local M = {}
+
+-- Function to convert MP3 to OGG using FFmpeg
+local function convert_mp3_to_ogg(input_path, output_path)
+    -- Path to FFmpeg executable
+    local ffmpeg_path = "C:/ffmpeg/ffmpeg.exe"
+
+    -- Check if FFmpeg executable exists
+    local ffmpeg_attrs = editor.external_file_attributes(ffmpeg_path)
+    if not ffmpeg_attrs.exists then
+        return false, "FFmpeg executable not found at path: " .. ffmpeg_path
+    end
+
+    -- Execute the FFmpeg command
+    local success, result = pcall(function()
+        return editor.execute(
+        ffmpeg_path,
+        "-y",
+        "-loglevel", "error",  -- Suppress info messages, show only errors
+        "-i", input_path,
+        "-ar", "44100",
+        "-ac", "2",
+        "-b:a", "192k",
+        output_path,
+        {
+            reload_resources = true,
+            out = "capture",
+            err = "stdout"
+        }
+    )
+end)
+
+if success then
+    -- The command succeeded
+    return true, nil
+else
+    -- The command failed, 'result' contains the error message
+    return false, result
+end
+end
+
+function M.get_commands()
+return {
+    {
+        label = "Convert to OGG",
+        locations = {"Assets"},
+        query = {
+            selection = {type = "resource", cardinality = "one"}
+        },
+        active = function(opts)
+            local path = editor.get(opts.selection, "path")
+            return path:match("%.mp3$") ~= nil
+        end,
+        run = function(opts)
+            -- Get the selected MP3 file path
+            local resource_path = editor.get(opts.selection, "path")
+            local input_path = resource_path:sub(2) -- Remove leading "/"
+
+            -- Define the output OGG file path
+            local output_path = input_path:gsub("%.mp3$", ".ogg")
+
+            -- Call the conversion function
+            local success, error_message = convert_mp3_to_ogg(input_path, output_path)
+
+            -- Provide feedback to the user
+            if success then
+                editor.ui.show_dialog(editor.ui.dialog({
+                    title = "Conversion Successful",
+                    content = editor.ui.vertical({
+                        padding = editor.ui.PADDING.LARGE,
+                        children = {
+                            editor.ui.paragraph({
+                                text = "The MP3 file has been successfully converted to OGG format.",
+                                alignment = editor.ui.TEXT_ALIGNMENT.LEFT,
+                                word_wrap = true
+                            })
+                        }
+                    }),
+                    buttons = {
+                        editor.ui.dialog_button({
+                            text = "OK",
+                            default = true
+                        })
+                    }
+                }))
+            else
+                editor.ui.show_dialog(editor.ui.dialog({
+                    title = "Conversion Failed",
+                    content = editor.ui.vertical({
+                        padding = editor.ui.PADDING.LARGE,
+                        children = {
+                            editor.ui.paragraph({
+                                text = "An error occurred during conversion:\n" .. error_message,
+                                alignment = editor.ui.TEXT_ALIGNMENT.LEFT,
+                                word_wrap = true
+                            })
+                        }
+                    }),
+                    buttons = {
+                        editor.ui.dialog_button({
+                            text = "OK",
+                            default = true
+                        })
+                    }
+                }))
+            end
+
+            -- Optionally, save any unsaved changes
+            editor.save()
+        end
+    }
+}
+end
+
+return M
