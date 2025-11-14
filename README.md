@@ -1,26 +1,62 @@
 # Collection of Defold Editor Scripts and UI
 
-Useful Editor Scripts with custom UI for Defold.
+This project contains Useful Editor Scripts with custom UI for Defold.
 
-> Note!
-Curent scripts run and are tested on Windows. OS-independent scripts (e.g. creating components) should work on all platforms. I might do Linux too in the future. MacOS PRs are welcomed.
+This project contains also several "helper" Lua modules for doing recurring stuff for Editor Scripts and UI e.g. string operations (`string_helper`), file operations (`file_helper`), some common UI stuff (`ui_helper`) and other, like helpers for resources - for creating or modifying text files being Defold components or resources. Use them in your own scripts too!
 
-# GUI 🪟
+All scripts are tested on Linux (Ubuntu 24.04) and Windows.
+OS-independent scripts should work on all platforms, but sound related uses external ffmpeg.
 
-## gui-add-script 📜
+PRs are welcomed. If you spot any issues, report them!
 
-It creates a `.gui_script` file and links it to this `.gui` component immediately (to `Script` property).
+# Installation
 
-1. Right click on any `.gui` file in `Assets`.
+You can use the these editor scripts in your own project by adding this project as a [Defold library dependency](https://www.defold.com/manuals/libraries/). Open your `game.project` file and in the dependencies field under project add:
+
+`https://github.com/paweljarosz/editor-scripts-ui-collection/archive/master.zip`
+
+or particular version - newest is 1.2:
+
+`https://github.com/paweljarosz/editor-scripts-ui-collection/archive/v1.2.zip`
+
+You can also just copy and paste needed scripts directly to your project directory and modify them to suit your needs (default file content, default reference files, etc.).
+
+---
+
+# Models 🧸
+
+## model_from_gltf 🌐
+
+Create any number `.model` component files out of selected or added `.gltf` meshes, all with one configured material and sampler textures into the given output folder (or in place of GLTF files by default). The script uses a rich dialog UI for selecting files and defining other properties.
+
+1. Open UI:
+ - **Project command** – open the **Project** context menu and pick `Create Models From GLTF` to start from scratch or:
+ - **Assets command** – select one or more `.gltf` files in **Assets**, right‑click, and choose `Create Models From GLTF` to prefill the dialog with those files.
+2. Configure output directory, which material is used, assign textures to each sampler of the given material.
+3. Add/remove GLTF files via the dedicated picker. Use `+Add Many` to add files in batch or `+Add` to add a single entry. Use `-` (minus) button to remove a given entry.
+4. Use checkbox for each file if the output model should have the property `Create GO Bones` enabled/disabled. Use checkbox at the bottom `Mark All Create Go Bones Disabled/Enabled` to do it for all.
+5. Resolve any validation warnings (duplicate targets, missing textures, etc.), then click `Create Models` to generate the `.model` files. The script automatically creates directories if needed and reports success or errors in Console.
+
+![](media/models_from_gltf.gif)
+
+---
+
+# GUI 📱
+
+## gui_add_script 📜
+
+It quickly creates a default `.gui_script` file and links it to each selected `.gui` component immediately (to `Script` property).
+
+1. Right click on any `.gui` file or a selection of files including `.gui` files in `Assets`.
 2. Select `Add GUI Script`.
 
 ![](media/add-gui-script.gif)
 
-## gui-add-to-collection 🪟
+## gui_add_to_collection 📲
 
-It creates both `.gui` component and `.gui_script` files binded together **and** puts a game object with gui component with this gui directly in collection. It also has a UI popup, where you can type a name!
+It creates both `.gui` component and `.gui_script` files binded together **and** puts a game object with gui component with this gui directly in the given collection. It also has a UI popup, where you can type a name.
 
-1. Right click on `root` in your collection's `Outline` pane.
+1. Right click on `Collection` in your collection's `Outline` pane.
 2. Select `Add GUI to collection`.
 3. Type in a name and click `Enter`.
 4. Click `Create`.
@@ -87,18 +123,19 @@ P.P.S. I know, it would be great to have a visual waveform on a timeline with st
 
 ## sound-component 🔊
 
-It allows you to create a Defold Sound Component out of a compatible sound file (`.wav` or `.ogg`).
+Turn multiple `.wav`/`.ogg` files into `.sound` resources in one pass.
 
-1. Right click on a sound file.
-2. Select `Create Sound Component`.
-3. Eventually change default properties.
-5. Click `Create`.
+1. Select the desired sound files in **Assets** (only `.wav` and `.ogg` populate the dialog).
+2. Run `Create Sound Components`.
+3. A scrollable table opens showing each sound on its own two-row card. The top row lists the index, file path, and remove button; the bottom row is aligned under fixed headers for `Loop`, `Count` (Loopcount), `Group`, `Gain`, `Pan`, and `Speed`.
+4. Adjust properties per row (loop counts, groups, gain/pan/speed). The header stays visible while scrolling when more than six sounds are selected.
+5. Click **Create Sound Components** and the `.sound` files are emitted next to their source clips.
 
-![](media/sound-component.gif)
+![](media/sound-components.gif)
 
 ---
 
-## Installation - FFmpeg dependency
+# FFmpeg dependency
 
 Currently, there is no possibility to do anything with sounds in Editor Scripts, afaik. So I used powerful `execute` and utilised FFmpeg.
 
@@ -122,7 +159,8 @@ On Linux you can (though scripts are Windows only - they need modifications to r
 4. Check installation path: `which -a ffmpeg`
 (should give e.g. --> `/usr/bin/ffmpeg` or `/bin/ffmpeg`)
 
-If your path is different, please modify it in scripts (perhaps there should be a script to install ffmpeg and add its path here, but for now.. heh :sweat_smile:) in the common `ffmpeg_helper.lua` module:
+Scripts tries to automatically detect correct paths when you click `Reload Editor Scripts`.
+If your path is not found, please modify it in scripts (perhaps there should be a script to install ffmpeg and add its path here, but for now.. heh :sweat_smile:) in the common `ffmpeg_helper.lua` module:
 
     -- Adjust the paths if needed
     local FFMPEG_PATH = "C:/ffmpeg/bin/ffmpeg.exe"
@@ -130,7 +168,7 @@ If your path is different, please modify it in scripts (perhaps there should be 
     local FFPROBE_PATH = "C:/ffmpeg/bin/ffprobe.exe"
 
 
-### FFplay and FFprobe dependency
+## FFplay and FFprobe dependency
 
 Additionally, sound-play Editor Script utilizes `ffplay` and sound-cut utilizes `ffprobe`.
 Ensure that `ffplay` and `ffprobe` comes with your installation. They might be in `.../ffmpeg/bin/`. 
@@ -138,30 +176,16 @@ Check `ffplay -version` and ``ffprobe -version` in terminal. If not, [download t
 
 ---
 
-## Installation - as Defold dependency 
-You can use the these editor scripts in your own project by adding this project as a [Defold library dependency](https://www.defold.com/manuals/libraries/). Open your `game.project` file and in the dependencies field under project add:  
-`https://github.com/paweljarosz/editor-scripts-ui-collection/archive/master.zip` or particular version. You can also just copy and paste needed scripts directly to your project directory.
+# License
 
----
+For full license details, see the [LICENSE.md](LICENSE.md) file.
 
-## License
-
-This project is licensed under the MIT License.
-
-Copyright 2024 Paweł Jarosz
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-## Issues and suggestions
+# Issues and suggestions
 
 If you have any issues, questions or suggestions please [create an issue](https://github.com/paweljarosz/editor-scripts-ui-collection/issues).
 
 
-## ❤️ Support ❤️
+# ❤️ Support ❤️
 
 If you appreciate what I'm doing, please consider supporting me!
 

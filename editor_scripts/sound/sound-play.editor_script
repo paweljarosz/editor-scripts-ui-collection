@@ -1,6 +1,6 @@
-local ffmpeg_helper = require "editor-scripts.ffmpeg_helper"
-local file_helper = require "editor-scripts.file_helper"
-local ui_helper = require "editor-scripts.ui_helper"
+local ffmpeg_helper = require "editor_scripts.helpers.ffmpeg_helper"
+local file_helper = require "editor_scripts.helpers.file_helper"
+local ui_helper = require "editor_scripts.helpers.ui_helper"
 
 local M = {}
 
@@ -26,11 +26,13 @@ end
     ffmpeg_helper.execute_kill_ffplay()
 end]]
 
+local IS_WINDOWS = ffmpeg_helper.is_windows()
+
 local function cleanup_temp_directory(temp_directory, vbs_script_path)
-    -- Remove the temporary VBS file
-    if vbs_script_path and file_helper.exists(vbs_script_path) then
-        file_helper.remove(vbs_script_path)
-    end
+	-- Remove the temporary VBS file
+	if vbs_script_path and file_helper.exists(vbs_script_path) then
+		file_helper.remove(vbs_script_path)
+	end
     -- Safely remove the temporary directory
     if temp_directory and file_helper.exists("." .. temp_directory) then
         local remove_success, remove_error = pcall(function()
@@ -45,17 +47,35 @@ local function cleanup_temp_directory(temp_directory, vbs_script_path)
 end
 
 local run_in_background_function = function(opts)
-    local sound_path = "." .. editor.get(opts.selection, "path")
-    local temp_directory = "/editor-scripts/tmp_play"
-    -- Make sure the temporary directory is empty before creating it
-    cleanup_temp_directory(temp_directory, nil)
-    file_helper.create_directory(temp_directory)
-    -- Create and run the VBS script
-    local vbscript_command_run_ffplay = ffmpeg_helper.create_vbscript_command_ffplay(sound_path)
-    local vbs_script_path = file_helper.create_vbscript(vbscript_command_run_ffplay, temp_directory)
-    local success, result = pcall(function()
-        return editor.execute('wscript.exe', vbs_script_path)
-    end)
+	local sound_path = editor.get(opts.selection, "path")
+	if not sound_path or sound_path == "" then
+		return
+	end
+
+	if not IS_WINDOWS then
+		local success, err = ffmpeg_helper.play_sound_blocking(sound_path)
+		if not success then
+			local message = "Failed to play sound.\n" .. tostring(err)
+			ui_helper.show_error(message)
+		end
+		return
+	end
+
+	local normalized_path = "." .. sound_path
+	local temp_directory = "/editor-scripts/tmp_play"
+	-- Make sure the temporary directory is empty before creating it
+	cleanup_temp_directory(temp_directory, nil)
+	file_helper.create_directory(temp_directory)
+	-- Create and run the VBS script
+	local normalized_path = sound_path
+	if normalized_path:sub(1, 1) ~= "/" then
+		normalized_path = "/" .. normalized_path
+	end
+	local vbscript_command_run_ffplay = ffmpeg_helper.create_vbscript_command_ffplay("." .. normalized_path)
+	local vbs_script_path = file_helper.create_vbscript(vbscript_command_run_ffplay, temp_directory)
+	local success, result = pcall(function()
+		return editor.execute('wscript.exe', vbs_script_path)
+	end)
     if not success then
         local error_text = "Failed to execute VBScript:\n" .. tostring(result)
         ui_helper.show_error(error_text)

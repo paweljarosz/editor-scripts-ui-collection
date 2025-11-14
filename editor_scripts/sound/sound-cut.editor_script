@@ -1,6 +1,8 @@
-local ffmpeg_helper = require "editor-scripts.ffmpeg_helper"
-local file_helper = require "editor-scripts.file_helper"
-local ui_helper = require "editor-scripts.ui_helper"
+local ffmpeg_helper = require "editor_scripts.helpers.ffmpeg_helper"
+local file_helper = require "editor_scripts.helpers.file_helper"
+local ui_helper = require "editor_scripts.helpers.ui_helper"
+
+local IS_WINDOWS = ffmpeg_helper.is_windows()
 
 local M = {}
 
@@ -69,15 +71,17 @@ local cut_subtrack_editor = editor.ui.component(function(props)
 
     -- Function to stop prehearing and clean up resources
     local function stop_prehearing()
-        if ffmpeg_helper.is_process_running("ffplay.exe") then
-            local stop_success, stop_error = pcall(ffmpeg_helper.execute_kill_ffplay)
-            if not stop_success then
-                print("Warning: " .. tostring(stop_error))
+        if IS_WINDOWS then
+            if ffmpeg_helper.is_process_running("ffplay.exe") then
+                local stop_success, stop_error = pcall(ffmpeg_helper.execute_kill_ffplay)
+                if not stop_success then
+                    print("Warning: " .. tostring(stop_error))
+                else
+                    print("ffplay process stopped successfully.")
+                end
             else
-                print("ffplay process stopped successfully.")
+                print("ffplay is not running; no need to kill the process.")
             end
-        else
-            print("ffplay is not running; no need to kill the process.")
         end
 
         cleanup_prehearing_resources()
@@ -103,8 +107,17 @@ local cut_subtrack_editor = editor.ui.component(function(props)
             return
         end
 
+        if not IS_WINDOWS then
+            local play_success, play_error = ffmpeg_helper.play_sound_blocking(prehear_filepath)
+            if not play_success then
+                ui_helper.show_error("Failed to play subtrack:\n" .. tostring(play_error))
+            end
+            cleanup_prehearing_resources()
+            return
+        end
+
         -- Create VBScript content and run it
-        local vbscript_command_run_ffplay = ffmpeg_helper.create_vbscript_command_ffplay(prehear_filepath)
+        local vbscript_command_run_ffplay = ffmpeg_helper.create_vbscript_command_ffplay("." .. prehear_filepath)
         vbs_script_path = file_helper.create_vbscript(vbscript_command_run_ffplay, temp_prehear_directory)
 
         local play_success, result = pcall(function()
@@ -202,7 +215,7 @@ local cut_subtrack_editor = editor.ui.component(function(props)
                 {
                     editor.ui.label({ text = "" }), -- Empty label for alignment
                     editor.ui.button({
-                        text = is_prehearing and "Stop Subtrack" or "Play Subtrack", -- Change button text based on state
+                        text = (IS_WINDOWS and is_prehearing) and "Stop Subtrack" or "Play Subtrack", -- Change button text based on state
                         enabled = can_extract,
                         on_pressed = handle_prehear,
                     }),

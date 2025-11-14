@@ -1,4 +1,4 @@
-local table_helper = require "editor-scripts.table_helper"
+local table_helper = require "editor_scripts.helpers.table_helper"
 
 ---@class UIHelperChecklistItem
 ---@field label? string
@@ -167,6 +167,34 @@ function M.button_row(buttons, opts)
 	return editor.ui.horizontal({
 		spacing = opts.spacing or editor.ui.SPACING.SMALL,
 		children = buttons or {},
+	})
+end
+
+---@param props table|nil
+---@return table
+function M.labeled_checkbox(props)
+	props = props or {}
+	local label = props.label or ""
+	return editor.ui.horizontal({
+		spacing = props.spacing or editor.ui.SPACING.SMALL,
+		alignment = props.alignment or editor.ui.ALIGNMENT.LEFT,
+		grow = props.grow == true,
+		children = {
+			editor.ui.check_box({
+				value = props.value == true,
+				enabled = props.enabled ~= false,
+				on_value_changed = function(value)
+					if props.on_value_changed then
+						props.on_value_changed(value)
+					end
+				end,
+			}),
+			editor.ui.label({
+				text = label,
+				alignment = editor.ui.ALIGNMENT.LEFT,
+				grow = false,
+			}),
+		},
 	})
 end
 

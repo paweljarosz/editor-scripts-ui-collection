@@ -1,0 +1,24 @@
+local M = {}
+
+local file_helper = require "editor_scripts.helpers.file_helper"
+local logic = require "editor_scripts.gui.gui_add_script.gui_add_script_logic"
+
+function M.get_commands()
+    return {
+        {
+            label = "Add GUI Script",
+            locations = { "Assets" },
+            query = {
+                selection = { type = "resource", cardinality = "many" }
+            },
+            active = function(opts)
+                return file_helper.selection_any(opts.selection, file_helper.is_gui_file)
+            end,
+            run = function(opts)
+                return logic.run(opts.selection)
+            end
+        }
+    }
+end
+
+return M

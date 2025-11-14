@@ -1,6 +1,6 @@
-local ffmpeg_helper = require "editor-scripts.ffmpeg_helper"
-local file_helper = require "editor-scripts.file_helper"
-local ui_helper = require "editor-scripts.ui_helper"
+local ffmpeg_helper = require "editor_scripts.helpers.ffmpeg_helper"
+local file_helper = require "editor_scripts.helpers.file_helper"
+local ui_helper = require "editor_scripts.helpers.ui_helper"
 
 local M = {}
 

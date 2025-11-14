@@ -1,0 +1,24 @@
+local M = {}
+
+local file_helper = require "editor_scripts.helpers.file_helper"
+local logic = require "editor_scripts.gui.gui_add_to_collection.gui_add_to_collection_logic"
+
+function M.get_commands()
+    return {
+        {
+            label = "Add GUI to collection",
+            locations = { "Outline" },
+            query = {
+                selection = { type = "resource", cardinality = "one" }
+            },
+            active = function(opts)
+                return file_helper.selection_any(opts.selection, file_helper.is_collection_file)
+            end,
+            run = function(opts)
+                logic.run(opts.selection)
+            end
+        }
+    }
+end
+
+return M

@@ -1,0 +1,32 @@
+local logic = require "editor_scripts.model.model_from_gltf.model_from_gltf_logic"
+
+local M = {}
+
+local LABEL = "Create Models From GLTF"
+
+function M.get_commands()
+	return {
+		{
+			label = LABEL,
+			id = "custom.model_from_gltf.project",
+			locations = { "Project" },
+			run = function()
+				logic.run_project_command()
+			end,
+		},
+		{
+			label = LABEL,
+			id = "custom.model_from_gltf.assets",
+			locations = { "Assets" },
+			query = { selection = { type = "resource", cardinality = "many" } },
+			active = function(opts)
+				return logic.has_gltf_selection(opts.selection)
+			end,
+			run = function(opts)
+				logic.run_with_selection(opts.selection)
+			end,
+		},
+	}
+end
+
+return M

@@ -1,22 +1,129 @@
+local file_helper = require "editor_scripts.helpers.file_helper"
+local string_helper = require "editor_scripts.helpers.string_helper"
+local os_helper = require "editor_scripts.helpers.os_helper"
+
 local M = {}
 
--- Adjust the paths if needed
-local FFMPEG_PATH = "C:/ffmpeg/bin/ffmpeg.exe"
-local FFPLAY_PATH = "C:/ffmpeg/bin/ffplay.exe"
-local FFPROBE_PATH = "C:/ffmpeg/bin/ffprobe.exe"
+local function command_available(command)
+	if not command or command == "" then
+		return false
+	end
+	return pcall(function()
+		editor.execute(command, "-version", {
+			out = "discard",
+			err = "discard",
+			reload_resources = false,
+		})
+	end)
+end
 
-if editor.platform == "x86_64-win32" then
-	FFMPEG_PATH = "C:/ffmpeg/bin/ffmpeg.exe"
-	FFPLAY_PATH = "C:/ffmpeg/bin/ffplay.exe"
-	FFPROBE_PATH = "C:/ffmpeg/bin/ffprobe.exe"
-elseif editor.platform == "x86_64-macos" or editor.platform == "arm64-macos" then
-	FFMPEG_PATH = "/usr/local/bin/ffmpeg"
-	FFPLAY_PATH = "/usr/local/bin/ffplay"
-	FFPROBE_PATH = "/usr/local/bin/ffprobe"
-elseif editor.platform == "x86_64-linux" then
-	FFMPEG_PATH = "/usr/bin/ffmpeg"
-	FFPLAY_PATH = "/usr/bin/ffplay"
-	FFPROBE_PATH = "/usr/bin/ffprobe"
+local function normalize_candidate(path)
+	if not path or path == "" then
+		return nil
+	end
+	if path:sub(1, 1) == "/" then
+		return "." .. path
+	end
+	return path
+end
+
+local function detect_executable(default_command, candidates)
+	if command_available(default_command) then
+		return default_command
+	end
+	for _, candidate in ipairs(candidates or {}) do
+		local normalized = normalize_candidate(candidate)
+		if normalized and command_available(normalized) then
+			return normalized
+		end
+	end
+	return default_command
+end
+
+local FFMPEG_CANDIDATES_WIN = {
+	"/editor_scripts/bin/win32/ffmpeg.exe",
+	"/editor_scripts/bin/win64/ffmpeg.exe",
+}
+
+local FFPLAY_CANDIDATES_WIN = {
+	"/editor_scripts/bin/win32/ffplay.exe",
+	"/editor_scripts/bin/win64/ffplay.exe",
+}
+
+local FFPROBE_CANDIDATES_WIN = {
+	"/editor_scripts/bin/win32/ffprobe.exe",
+	"/editor_scripts/bin/win64/ffprobe.exe",
+}
+
+local FFMPEG_CANDIDATES_LINUX = {
+	"/editor_scripts/bin/linux/ffmpeg",
+}
+
+local FFPLAY_CANDIDATES_LINUX = {
+	"/editor_scripts/bin/linux/ffplay",
+}
+
+local FFPROBE_CANDIDATES_LINUX = {
+	"/editor_scripts/bin/linux/ffprobe",
+}
+
+local FFMPEG_CANDIDATES_MAC = {
+	"/editor_scripts/bin/macos/ffmpeg",
+}
+
+local FFPLAY_CANDIDATES_MAC = {
+	"/editor_scripts/bin/macos/ffplay",
+}
+
+local FFPROBE_CANDIDATES_MAC = {
+	"/editor_scripts/bin/macos/ffprobe",
+}
+
+local platform = os_helper.platform()
+local IS_WINDOWS = os_helper.is_windows()
+local IS_MAC = os_helper.is_macos()
+local IS_LINUX = os_helper.is_linux()
+local FFMPEG_PATH
+local FFPLAY_PATH
+local FFPROBE_PATH
+
+if IS_WINDOWS then
+	FFMPEG_PATH = detect_executable("ffmpeg.exe", FFMPEG_CANDIDATES_WIN)
+	FFPLAY_PATH = detect_executable("ffplay.exe", FFPLAY_CANDIDATES_WIN)
+	FFPROBE_PATH = detect_executable("ffprobe.exe", FFPROBE_CANDIDATES_WIN)
+elseif IS_MAC then
+	FFMPEG_PATH = detect_executable("ffmpeg", FFMPEG_CANDIDATES_MAC)
+	FFPLAY_PATH = detect_executable("ffplay", FFPLAY_CANDIDATES_MAC)
+	FFPROBE_PATH = detect_executable("ffprobe", FFPROBE_CANDIDATES_MAC)
+elseif IS_LINUX then
+	FFMPEG_PATH = detect_executable("ffmpeg", FFMPEG_CANDIDATES_LINUX)
+	FFPLAY_PATH = detect_executable("ffplay", FFPLAY_CANDIDATES_LINUX)
+	FFPROBE_PATH = detect_executable("ffprobe", FFPROBE_CANDIDATES_LINUX)
+else
+	FFMPEG_PATH = "ffmpeg"
+	FFPLAY_PATH = "ffplay"
+	FFPROBE_PATH = "ffprobe"
+end
+
+local function normalize_resource_path(path)
+	if not path or path == "" then
+		return ""
+	end
+	if path:sub(1, 1) == "." then
+		return path
+	end
+	if path:sub(1, 1) == "/" then
+		return "." .. path
+	end
+	local with_slash = string_helper.path_with_leading_slash(path)
+	if with_slash == "" then
+		return path
+	end
+	return "." .. with_slash
+end
+
+function M.is_windows()
+	return IS_WINDOWS
 end
 
 -- Checks if selected resource is a supported sound format file
@@ -39,6 +146,24 @@ function M.create_vbscript_command_ffplay(sound_path)
 	Set WshShell = CreateObject("WScript.Shell")
 	WshShell.Run """%s"" ""%s"" -autoexit -nodisp -hide_banner", 0, False
 	]], escape(FFPLAY_PATH), escape(sound_path))
+end
+
+function M.play_sound_blocking(sound_path)
+	local normalized = normalize_resource_path(sound_path)
+	return pcall(function()
+		return editor.execute(
+			FFPLAY_PATH,
+			"-autoexit",
+			"-nodisp",
+			"-hide_banner",
+			normalized,
+			{
+				reload_resources = false,
+				out = "discard",
+				err = "discard",
+			}
+		)
+	end)
 end
 
 function M.is_ffplay_running()
@@ -88,7 +213,7 @@ end
 
 -- Function to get the duration of the audio file using ffprobe
 function M.get_audio_duration(sound_path)
-	sound_path = sound_path:sub(2)  -- Remove leading slash
+	sound_path = normalize_resource_path(sound_path)
 	-- Use FFprobe to get the duration
 	local success, result = pcall(function()
 		return editor.execute(
@@ -129,10 +254,8 @@ end
 
 -- Function to extract a subtrack using FFmpeg
 function M.extract_subtrack(input_path, output_path, start_time, end_time)
-	input_path = input_path:sub(2)  -- Remove leading slash
-	-- Remove leading slash from input_path and output_path if present
-	input_path = input_path:gsub("^/", "")
-	output_path = output_path:gsub("^/", "")
+	input_path = normalize_resource_path(input_path)
+	output_path = normalize_resource_path(output_path)
 
 	print("Executing FFmpeg command")
 	print("FFMPEG_PATH:", FFMPEG_PATH)
@@ -202,9 +325,8 @@ end
 
 -- Function to convert audio using FFmpeg
 function M.convert_audio(input_path, output_path, output_format)
-	--input_path = input_path:sub(2)  -- Remove leading slash
-	--output_path = output_path:gsub("^/", "")
-	input_path = "./" .. input_path  -- Ensure it's treated as a relative path
+	input_path = normalize_resource_path(input_path)
+	output_path = normalize_resource_path(output_path)
 
 	-- Define FFmpeg parameters for different formats and execute command
 	local success, result = pcall(function()

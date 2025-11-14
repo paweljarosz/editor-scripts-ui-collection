@@ -13,6 +13,17 @@ local function normalize_path(path)
 	return path
 end
 
+---@param selection any
+---@return table
+local function normalize_selection(selection)
+	if type(selection) == "table" then
+		return selection
+	elseif selection ~= nil then
+		return { selection }
+	end
+	return {}
+end
+
 -- Checks if given file is a supported sound format file
 ---@param path string
 ---@return boolean
@@ -23,6 +34,62 @@ function M.is_sound_file(path)
 	or lower:match("%.flac$") ~= nil
 	or lower:match("%.mp3$") ~= nil
 	or lower:match("%.aac$") ~= nil
+end
+
+-- Checks if given file is a GUI file
+---@param path string|nil
+---@return boolean
+function M.is_file_extension(path, extension)
+	if not path or path == "" or not extension then
+		return false
+	end
+	return M.get_file_extension(path) == extension
+end
+
+function M.is_gui_file(path)
+	return M.is_file_extension(path, "gui")
+end
+
+function M.is_collection_file(path)
+	return M.is_file_extension(path, "collection")
+end
+
+---@param selection any
+---@param predicate fun(path:string, id:any):boolean
+---@return boolean
+function M.selection_any(selection, predicate)
+	if type(predicate) ~= "function" then
+		return false
+	end
+
+	for _, id in ipairs(normalize_selection(selection)) do
+		local path = editor.get(id, "path") or ""
+		if predicate(path, id) then
+			return true
+		end
+	end
+
+	return false
+end
+
+---@param selection any
+---@param predicate fun(path:string, id:any):boolean
+---@return boolean
+function M.selection_all(selection, predicate)
+	if type(predicate) ~= "function" then
+		return false
+	end
+
+	local has_items = false
+	for _, id in ipairs(normalize_selection(selection)) do
+		has_items = true
+		local path = editor.get(id, "path") or ""
+		if not predicate(path, id) then
+			return false
+		end
+	end
+
+	return has_items
 end
 
 -- Returns the file name without extension

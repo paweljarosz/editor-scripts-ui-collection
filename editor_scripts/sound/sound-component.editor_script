@@ -1,0 +1,21 @@
+local logic = require "editor_scripts.sound.sound_component.sound_component_logic"
+
+local M = {}
+
+function M.get_commands()
+	return {
+		{
+			label = "Create Sound Components",
+			locations = { "Assets" },
+			query = { selection = { type = "resource", cardinality = "many" } },
+			active = function(opts)
+				return logic.has_sound_selection(opts.selection or {})
+			end,
+			run = function(opts)
+				logic.run(opts.selection or {})
+			end,
+		}
+	}
+end
+
+return M
